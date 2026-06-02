@@ -1,0 +1,22 @@
+{
+  "tasks": [
+    {
+      "name": "task_1",
+      "train_path": "data/sample/task_1_train.jsonl",
+      "val_path": "data/sample/task_1_val.jsonl"
+    },
+    {
+      "name": "task_2",
+      "train_path": "data/sample/task_2_train.jsonl",
+      "val_path": "data/sample/task_2_val.jsonl"
+    }
+  ],
+  "answer_vocab": [
+    "yes",
+    "no",
+    "left",
+    "right",
+    "red",
+    "blue"
+  ]
+}

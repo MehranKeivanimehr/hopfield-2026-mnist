@@ -1,0 +1,3 @@
+{"image": "data/sample/images/demo_1.jpg", "question": "Is there a red object?", "answer": "yes", "question_type": "yesno", "concept_id": "red"}
+{"image": "data/sample/images/demo_1.jpg", "question": "Is there a blue object?", "answer": "no", "question_type": "yesno", "concept_id": "red"}
+{"image": "data/sample/images/demo_1.jpg", "question": "What color is the object?", "answer": "red", "question_type": "color", "concept_id": "red"}

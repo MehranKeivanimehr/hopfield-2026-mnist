@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use CMKC in your research, please cite this repository."
+title: "CMKC: Cross-Modal Knowledge Consolidation for Continual Vision-Language Learning"
+authors:
+  - family-names: "Keivanimehr"
+    given-names: "Mohammad"
+year: 2026
+license: "MIT"
+repository-code: "https://github.com/REPLACE_WITH_USERNAME/REPLACE_WITH_REPO"
