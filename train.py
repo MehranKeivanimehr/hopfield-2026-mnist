@@ -6,20 +6,27 @@ import os
 import torch
 import torch.distributed as dist
 
-from cmkc.config import load_config
+from cmkc.config import apply_overrides, load_config
 from cmkc.trainer import CMKCTrainer
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train CMKC on a continual VQA task sequence.")
     parser.add_argument("--config", required=True, help="Path to a JSON config file.")
+    parser.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Override a config value. May be passed multiple times.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     distributed = _maybe_init_distributed()
-    config = load_config(args.config)
+    config = apply_overrides(load_config(args.config), args.set)
     try:
         trainer = CMKCTrainer(config)
         trainer.run()

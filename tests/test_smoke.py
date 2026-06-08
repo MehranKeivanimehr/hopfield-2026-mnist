@@ -4,7 +4,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from cmkc.config import load_config
+from cmkc.config import apply_overrides, load_config
 from cmkc.data import VQATaskDataset, load_sequence
 from cmkc.model import ContinualVQAModel
 from cmkc.trainer import CMKCTrainer
@@ -17,6 +17,18 @@ def test_smoke_config_loads() -> None:
     assert config.vision_backbone == "tiny_cnn"
     assert config.text_backbone == "hash"
     assert config.pretrained_vision is False
+
+
+def test_config_overrides() -> None:
+    config = apply_overrides(
+        load_config("configs/smoke.json"),
+        ["epochs_per_task=3", "learning_rate=0.01", "pretrained_vision=true", "output_dir=artifacts/test"],
+    )
+
+    assert config.epochs_per_task == 3
+    assert config.learning_rate == 0.01
+    assert config.pretrained_vision is True
+    assert config.output_dir == "artifacts/test"
 
 
 def test_sample_dataset_loads_images() -> None:
@@ -70,3 +82,9 @@ def test_trainer_writes_summary(tmp_path: Path) -> None:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert "task_accuracy_matrix" in summary
     assert len(summary["task_accuracy_matrix"]) == 2
+    assert summary["num_tasks"] == 2
+    sequence = load_sequence(load_config("configs/smoke.json").sequence_path)
+    assert summary["answer_vocab_size"] == len(sequence.answer_vocab)
+    assert summary["train_history"]
+    assert (tmp_path / "run" / "config.resolved.json").exists()
+    assert (tmp_path / "run" / "run_info.json").exists()

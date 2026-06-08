@@ -3,7 +3,10 @@ from __future__ import annotations
 import copy
 import json
 import os
+import platform
 import random
+import sys
+import time
 from pathlib import Path
 
 import torch
@@ -14,7 +17,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
-from .config import TrainConfig
+from .config import TrainConfig, config_to_dict
 from .data import VQATaskDataset, collate_vqa_batch, load_sequence
 from .memory import ExemplarMemory, MemoryItem, PrototypeMemory
 from .metrics import ContinualMetrics
@@ -42,6 +45,7 @@ class CMKCTrainer:
         self.prototype_memory = PrototypeMemory(decay=config.prototype_decay)
         self.exemplar_memory = ExemplarMemory(budget_per_task=config.memory_budget_per_task)
         self.metrics = ContinualMetrics()
+        self.train_history: list[dict[str, float | int | str]] = []
 
         base_model = ContinualVQAModel(
             text_backbone=config.text_backbone,
@@ -65,6 +69,11 @@ class CMKCTrainer:
         self.teacher_model: ContinualVQAModel | None = None
 
     def run(self) -> None:
+        started_at = time.time()
+        if self.rank == 0:
+            self._write_json(self.output_dir / "config.resolved.json", config_to_dict(self.config))
+            self._write_json(self.output_dir / "run_info.json", self._run_info())
+
         for task_index, task in enumerate(self.sequence.tasks):
             train_dataset = VQATaskDataset(task.train_path, self.answer_to_id, self.config.image_size)
             train_sampler = (
@@ -79,6 +88,7 @@ class CMKCTrainer:
                 sampler=train_sampler,
                 num_workers=self.config.num_workers,
                 collate_fn=collate_vqa_batch,
+                generator=self._data_generator(task_index),
             )
             self._train_task(task.name, train_loader)
             self._update_exemplar_memory(train_dataset)
@@ -122,6 +132,10 @@ class CMKCTrainer:
                     "task_accuracy_matrix": self.metrics.task_accuracy_matrix,
                     "average_accuracy": self.metrics.average_accuracy(),
                     "average_forgetting": self.metrics.average_forgetting(),
+                    "num_tasks": len(self.sequence.tasks),
+                    "answer_vocab_size": len(self.sequence.answer_vocab),
+                    "train_history": self.train_history,
+                    "elapsed_seconds": round(time.time() - started_at, 3),
                 },
             )
 
@@ -142,6 +156,20 @@ class CMKCTrainer:
                 loss.backward()
                 self.optimizer.step()
                 progress.set_postfix({key: f"{value:.4f}" for key, value in stats.items()})
+                if self.rank == 0:
+                    self.train_history.append(
+                        {
+                            "task_name": task_name,
+                            "epoch": epoch + 1,
+                            "step": len(self.train_history) + 1,
+                            "total_loss": stats["total"],
+                            "task_loss": stats["task"],
+                            "vis_anchor_loss": stats["vis"],
+                            "lang_anchor_loss": stats["lang"],
+                            "align_loss": stats["align"],
+                            "replay_loss": stats["replay"],
+                        }
+                    )
 
     def _compute_batch_loss(self, batch: dict[str, object]) -> tuple[torch.Tensor, dict[str, float]]:
         images = batch["images"].to(self.device)
@@ -272,8 +300,27 @@ class CMKCTrainer:
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+
+    def _data_generator(self, task_index: int) -> torch.Generator:
+        generator = torch.Generator()
+        generator.manual_seed(self.config.seed + task_index)
+        return generator
+
+    def _run_info(self) -> dict[str, object]:
+        return {
+            "python": sys.version,
+            "platform": platform.platform(),
+            "torch": torch.__version__,
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_device_count": torch.cuda.device_count(),
+            "distributed": self.is_distributed,
+            "world_size": self.world_size,
+            "rank": self.rank,
+        }
 
     @staticmethod
     def _write_json(path: Path, payload: dict[str, object]) -> None:
         with open(path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2)
+            json.dump(payload, handle, indent=2, sort_keys=True)

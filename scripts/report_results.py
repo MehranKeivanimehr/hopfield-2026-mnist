@@ -19,13 +19,16 @@ def main() -> None:
     args = parse_args()
     run_dir = Path(args.run_dir)
     summary = read_json(run_dir / "summary.json")
-    config = read_json(Path(args.config)) if args.config else None
+    config_path = Path(args.config) if args.config else run_dir / "config.resolved.json"
+    config = read_json(config_path) if config_path.exists() else None
+    run_info_path = run_dir / "run_info.json"
+    run_info = read_json(run_info_path) if run_info_path.exists() else None
     task_files = sorted(run_dir.glob("*_metrics.json"))
     task_metrics = [read_json(path) for path in task_files]
 
     output_path = Path(args.output) if args.output else run_dir / "report.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(render_report(run_dir, summary, task_metrics, config), encoding="utf-8")
+    output_path.write_text(render_report(run_dir, summary, task_metrics, config, run_info), encoding="utf-8")
     print(f"Wrote {output_path}")
 
 
@@ -39,6 +42,7 @@ def render_report(
     summary: dict[str, Any],
     task_metrics: list[dict[str, Any]],
     config: dict[str, Any] | None,
+    run_info: dict[str, Any] | None,
 ) -> str:
     lines = [
         "# CMKC Experiment Report",
@@ -47,6 +51,7 @@ def render_report(
         f"- Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
         f"- Average accuracy: {summary.get('average_accuracy', 0.0):.4f}",
         f"- Average forgetting: {summary.get('average_forgetting', 0.0):.4f}",
+        f"- Elapsed seconds: {summary.get('elapsed_seconds', 0.0):.3f}",
         "",
         "## Task Accuracy Matrix",
         "",
@@ -96,6 +101,38 @@ def render_report(
         for key in selected_keys:
             if key in config:
                 lines.append(f"| `{key}` | `{config[key]}` |")
+
+    history = summary.get("train_history", [])
+    if history:
+        lines.extend(["", "## Training Trace", ""])
+        lines.append("| Step | Task | Epoch | Total loss | Task loss | Replay loss |")
+        lines.append("| ---: | --- | ---: | ---: | ---: | ---: |")
+        head = history[:5]
+        tail = history[-5:] if len(history) > 5 else []
+        shown = head + ([{"step": "...", "task": "...", "epoch": "..."}] if tail else []) + tail
+        for item in shown:
+            if item.get("step") == "...":
+                lines.append("| ... | ... | ... | ... | ... | ... |")
+                continue
+            lines.append(
+                "| {step} | {task} | {epoch} | {total:.4f} | {task_loss:.4f} | {replay:.4f} |".format(
+                    step=item.get("step", 0),
+                    task=item.get("task_name", "unknown"),
+                    epoch=item.get("epoch", 0),
+                    total=item.get("total_loss", 0.0),
+                    task_loss=item.get("task_loss", 0.0),
+                    replay=item.get("replay_loss", 0.0),
+                )
+            )
+
+    if run_info:
+        lines.extend(["", "## Runtime", ""])
+        lines.append("| Key | Value |")
+        lines.append("| --- | --- |")
+        for key in ["python", "platform", "torch", "cuda_available", "cuda_device_count"]:
+            if key in run_info:
+                value = str(run_info[key]).replace("\n", " ")
+                lines.append(f"| `{key}` | `{value}` |")
 
     lines.extend(
         [
