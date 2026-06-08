@@ -47,7 +47,7 @@ Bootstrap 95% confidence intervals over the 12 capacity/noise settings:
 
 ![Method comparison](../docs/assets/hopfield_2026/method_comparison.png)
 
-![Capacity sweep](../docs/assets/hopfield_2026/capacity_sweep.png)
+![Capacity sweep](../docs/assets/hopfield_2026/capacity_sweep_clean.png)
 
 ![Accuracy heatmap](../docs/assets/hopfield_2026/accuracy_heatmap.png)
 

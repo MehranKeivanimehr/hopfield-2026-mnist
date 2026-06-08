@@ -25,7 +25,7 @@ The key finding is simple and honest:
 
 ![Qualitative recall gallery](docs/assets/hopfield_2026/qualitative_gallery.png)
 
-![Capacity sweep](docs/assets/hopfield_2026/capacity_sweep.png)
+![Capacity sweep](docs/assets/hopfield_2026/capacity_sweep_clean.png)
 
 ![Accuracy heatmap](docs/assets/hopfield_2026/accuracy_heatmap.png)
 
