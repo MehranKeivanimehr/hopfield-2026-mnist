@@ -369,7 +369,7 @@ def plot_method_bar(summary: list[dict[str, float | str]], output_dir: Path) -> 
 
 
 def plot_capacity_curves(rows: list[BenchmarkRow], output_dir: Path) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.4), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(12.5, 6.4), sharey=True, constrained_layout=True)
     colors = {
         "nearest": "#64748b",
         "hebbian": "#dc2626",
@@ -377,6 +377,8 @@ def plot_capacity_curves(rows: list[BenchmarkRow], output_dir: Path) -> None:
         "modern_attention": "#0f766e",
     }
     method_order = ["nearest", "pseudoinverse", "modern_attention", "hebbian"]
+    line_handles = []
+    line_labels = []
     for ax, pixel_mode, title in [
         (axes[0], "full", "Full 28x28 pixels"),
         (axes[1], "variance", "Variance-filtered pixels"),
@@ -388,38 +390,35 @@ def plot_capacity_curves(rows: list[BenchmarkRow], output_dir: Path) -> None:
                 mean(row.label_accuracy for row in items if row.stored_patterns == stored)
                 for stored in xs
             ]
-            ax.plot(
+            (line,) = ax.plot(
                 xs,
                 ys,
                 marker="o",
                 linewidth=2.6,
                 color=colors[method],
+                label=pretty_method(method),
             )
-            ax.text(
-                xs[-1] + 2,
-                ys[-1],
-                pretty_method(method).replace(" memory", ""),
-                color=colors[method],
-                va="center",
-                fontsize=8.5,
-            )
+            if pixel_mode == "full":
+                line_handles.append(line)
+                line_labels.append(pretty_method(method))
+        ax.axhline(0.10, color="#94a3b8", linestyle=":", linewidth=1.4)
+        ax.text(10, 0.125, "chance", color="#64748b", fontsize=8.5)
         ax.set_title(title, fontsize=13, pad=10)
         ax.set_xlabel("Stored memories")
-        ax.set_xlim(7, 116)
+        ax.set_xlim(7, 103)
         ax.set_ylim(0, 1.05)
         ax.grid(True, alpha=0.16)
         ax.spines[["top", "right"]].set_visible(False)
     axes[0].set_ylabel("Mean digit-label retrieval accuracy")
-    fig.suptitle("Capacity Sweep: Retrieval Accuracy as Memory Load Increases", fontsize=15, y=1.02)
-    fig.text(
-        0.5,
-        -0.03,
-        "Dashed legend removed intentionally: each curve is labeled at its endpoint. Hebbian collapse is visible near chance level.",
-        ha="center",
+    fig.suptitle("Capacity Sweep Under Corrupted MNIST Queries", fontsize=16)
+    fig.legend(
+        line_handles,
+        line_labels,
+        loc="outside lower center",
+        ncol=4,
+        frameon=False,
         fontsize=9,
-        color="#475569",
     )
-    fig.tight_layout()
     fig.savefig(output_dir / "capacity_sweep.png", dpi=220)
     plt.close(fig)
 
