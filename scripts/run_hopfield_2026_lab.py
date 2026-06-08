@@ -369,15 +369,19 @@ def plot_method_bar(summary: list[dict[str, float | str]], output_dir: Path) -> 
 
 
 def plot_capacity_curves(rows: list[BenchmarkRow], output_dir: Path) -> None:
-    fig, ax = plt.subplots(figsize=(9.5, 5.6))
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.4), sharey=True)
     colors = {
         "nearest": "#64748b",
         "hebbian": "#dc2626",
         "pseudoinverse": "#2563eb",
         "modern_attention": "#0f766e",
     }
-    for method in ["nearest", "hebbian", "pseudoinverse", "modern_attention"]:
-        for pixel_mode, style, alpha in [("full", "--", 0.78), ("variance", "-", 1.0)]:
+    method_order = ["nearest", "pseudoinverse", "modern_attention", "hebbian"]
+    for ax, pixel_mode, title in [
+        (axes[0], "full", "Full 28x28 pixels"),
+        (axes[1], "variance", "Variance-filtered pixels"),
+    ]:
+        for method in method_order:
             items = [row for row in rows if row.method == method and row.pixel_mode == pixel_mode]
             xs = sorted({row.stored_patterns for row in items})
             ys = [
@@ -388,47 +392,65 @@ def plot_capacity_curves(rows: list[BenchmarkRow], output_dir: Path) -> None:
                 xs,
                 ys,
                 marker="o",
-                linestyle=style,
-                linewidth=2.4,
-                alpha=alpha,
+                linewidth=2.6,
                 color=colors[method],
-                label=f"{pretty_method(method)} / {pretty_pixel(pixel_mode)}",
             )
-    ax.set_xlabel("Number of stored MNIST memories")
-    ax.set_ylabel("Mean digit-label retrieval accuracy")
-    ax.set_title("Capacity Sweep Under Corrupted Queries", fontsize=15, pad=14)
-    ax.set_ylim(0, 1.05)
-    ax.grid(True, alpha=0.18)
-    ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(fontsize=8, ncol=2, frameon=False, loc="lower left")
+            ax.text(
+                xs[-1] + 2,
+                ys[-1],
+                pretty_method(method).replace(" memory", ""),
+                color=colors[method],
+                va="center",
+                fontsize=8.5,
+            )
+        ax.set_title(title, fontsize=13, pad=10)
+        ax.set_xlabel("Stored memories")
+        ax.set_xlim(7, 116)
+        ax.set_ylim(0, 1.05)
+        ax.grid(True, alpha=0.16)
+        ax.spines[["top", "right"]].set_visible(False)
+    axes[0].set_ylabel("Mean digit-label retrieval accuracy")
+    fig.suptitle("Capacity Sweep: Retrieval Accuracy as Memory Load Increases", fontsize=15, y=1.02)
+    fig.text(
+        0.5,
+        -0.03,
+        "Dashed legend removed intentionally: each curve is labeled at its endpoint. Hebbian collapse is visible near chance level.",
+        ha="center",
+        fontsize=9,
+        color="#475569",
+    )
     fig.tight_layout()
     fig.savefig(output_dir / "capacity_sweep.png", dpi=220)
     plt.close(fig)
 
 
 def plot_heatmap(rows: list[BenchmarkRow], output_dir: Path) -> None:
-    methods = ["hebbian", "modern_attention", "pseudoinverse", "nearest"]
-    pixel_modes = ["full", "variance"]
-    matrix = np.zeros((len(methods), len(pixel_modes)))
-    for i, method in enumerate(methods):
-        for j, pixel_mode in enumerate(pixel_modes):
-            matrix[i, j] = mean(
-                row.label_accuracy for row in rows if row.method == method and row.pixel_mode == pixel_mode
-            )
-    fig, ax = plt.subplots(figsize=(7.2, 5.4))
-    im = ax.imshow(matrix, vmin=0, vmax=1, cmap="magma")
-    ax.set_xticks(np.arange(len(pixel_modes)), [pretty_pixel(mode) for mode in pixel_modes])
-    ax.set_yticks(np.arange(len(methods)), [pretty_method(method) for method in methods])
-    for i in range(len(methods)):
-        for j in range(len(pixel_modes)):
-            color = "white" if matrix[i, j] < 0.72 else "#111827"
-            ax.text(j, i, f"{matrix[i, j]:.2f}", ha="center", va="center", color=color, fontweight="bold", fontsize=13)
-    ax.set_title("Mean Digit Retrieval Accuracy", fontsize=15, pad=14)
-    ax.tick_params(length=0)
-    ax.spines[:].set_visible(False)
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.outline.set_visible(False)
-    cbar.set_label("Accuracy", rotation=270, labelpad=15)
+    methods = ["nearest", "pseudoinverse", "modern_attention", "hebbian"]
+    full_values = [
+        mean(row.label_accuracy for row in rows if row.method == method and row.pixel_mode == "full")
+        for method in methods
+    ]
+    variance_values = [
+        mean(row.label_accuracy for row in rows if row.method == method and row.pixel_mode == "variance")
+        for method in methods
+    ]
+    y = np.arange(len(methods))
+    height = 0.34
+    fig, ax = plt.subplots(figsize=(9.8, 5.4))
+    ax.barh(y - height / 2, full_values, height, color="#2563eb", label="Full pixels")
+    ax.barh(y + height / 2, variance_values, height, color="#14b8a6", label="Variance-filtered")
+    ax.set_yticks(y, [pretty_method(method) for method in methods])
+    ax.invert_yaxis()
+    ax.set_xlim(0, 1.08)
+    ax.set_xlabel("Mean digit-label retrieval accuracy")
+    ax.set_title("Retrieval Scorecard", fontsize=15, pad=14)
+    ax.grid(axis="x", alpha=0.16)
+    ax.spines[["top", "right", "left"]].set_visible(False)
+    ax.legend(frameon=False, loc="lower right")
+    for idx, value in enumerate(full_values):
+        ax.text(value + 0.015, idx - height / 2, f"{value:.2f}", va="center", fontsize=10)
+    for idx, value in enumerate(variance_values):
+        ax.text(value + 0.015, idx + height / 2, f"{value:.2f}", va="center", fontsize=10)
     fig.tight_layout()
     fig.savefig(output_dir / "accuracy_heatmap.png", dpi=220)
     plt.close(fig)
