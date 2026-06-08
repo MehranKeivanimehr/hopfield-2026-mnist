@@ -343,49 +343,71 @@ def write_json(path: Path, payload: dict[str, object]) -> None:
 
 
 def plot_method_bar(summary: list[dict[str, float | str]], output_dir: Path) -> None:
-    labels = [f"{row['method']}\n{row['pixel_mode']}" for row in summary]
-    label_acc = [float(row["label_accuracy"]) for row in summary]
-    exact_acc = [float(row["exact_retrieval_accuracy"]) for row in summary]
-    x = np.arange(len(labels))
-    width = 0.36
-    plt.figure(figsize=(11, 5))
-    plt.bar(x - width / 2, label_acc, width, label="Label retrieval")
-    plt.bar(x + width / 2, exact_acc, width, label="Exact exemplar retrieval")
-    plt.xticks(x, labels, rotation=25, ha="right")
-    plt.ylim(0, 1.05)
-    plt.ylabel("Mean accuracy")
-    plt.title("2026 Hopfield Lab: retrieval accuracy by memory type")
-    plt.grid(axis="y", alpha=0.25)
-    plt.legend()
+    ordered = sorted(summary, key=lambda row: float(row["label_accuracy"]))
+    labels = [pretty_method(str(row["method"])) + "\n" + pretty_pixel(str(row["pixel_mode"])) for row in ordered]
+    label_acc = [float(row["label_accuracy"]) for row in ordered]
+    exact_acc = [float(row["exact_retrieval_accuracy"]) for row in ordered]
+    y = np.arange(len(labels))
+    height = 0.36
+    fig, ax = plt.subplots(figsize=(10.5, 6.2))
+    ax.barh(y - height / 2, label_acc, height, label="Digit label retrieval", color="#2563eb")
+    ax.barh(y + height / 2, exact_acc, height, label="Exact memory retrieval", color="#14b8a6")
+    ax.set_xlim(0, 1.04)
+    ax.set_yticks(y, labels)
+    ax.set_xlabel("Mean accuracy")
+    ax.set_title("Associative Memory Retrieval on Corrupted MNIST", fontsize=15, pad=14)
+    ax.grid(axis="x", alpha=0.18)
+    ax.spines[["top", "right", "left"]].set_visible(False)
+    ax.legend(loc="lower right", frameon=False)
+    for idx, value in enumerate(label_acc):
+        ax.text(value + 0.015, idx - height / 2, f"{value:.2f}", va="center", fontsize=9)
+    for idx, value in enumerate(exact_acc):
+        ax.text(value + 0.015, idx + height / 2, f"{value:.2f}", va="center", fontsize=9)
     plt.tight_layout()
     plt.savefig(output_dir / "method_comparison.png", dpi=220)
     plt.close()
 
 
 def plot_capacity_curves(rows: list[BenchmarkRow], output_dir: Path) -> None:
-    plt.figure(figsize=(9, 5))
+    fig, ax = plt.subplots(figsize=(9.5, 5.6))
+    colors = {
+        "nearest": "#64748b",
+        "hebbian": "#dc2626",
+        "pseudoinverse": "#2563eb",
+        "modern_attention": "#0f766e",
+    }
     for method in ["nearest", "hebbian", "pseudoinverse", "modern_attention"]:
-        for pixel_mode, style in [("full", "--"), ("variance", "-")]:
+        for pixel_mode, style, alpha in [("full", "--", 0.78), ("variance", "-", 1.0)]:
             items = [row for row in rows if row.method == method and row.pixel_mode == pixel_mode]
             xs = sorted({row.stored_patterns for row in items})
             ys = [
                 mean(row.label_accuracy for row in items if row.stored_patterns == stored)
                 for stored in xs
             ]
-            plt.plot(xs, ys, marker="o", linestyle=style, linewidth=2, label=f"{method} / {pixel_mode}")
-    plt.xlabel("Stored patterns")
-    plt.ylabel("Mean label retrieval accuracy")
-    plt.title("Capacity sweep under corrupted MNIST queries")
-    plt.ylim(0, 1.05)
-    plt.grid(True, alpha=0.25)
-    plt.legend(fontsize=8, ncol=2)
-    plt.tight_layout()
-    plt.savefig(output_dir / "capacity_sweep.png", dpi=220)
-    plt.close()
+            ax.plot(
+                xs,
+                ys,
+                marker="o",
+                linestyle=style,
+                linewidth=2.4,
+                alpha=alpha,
+                color=colors[method],
+                label=f"{pretty_method(method)} / {pretty_pixel(pixel_mode)}",
+            )
+    ax.set_xlabel("Number of stored MNIST memories")
+    ax.set_ylabel("Mean digit-label retrieval accuracy")
+    ax.set_title("Capacity Sweep Under Corrupted Queries", fontsize=15, pad=14)
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, alpha=0.18)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(fontsize=8, ncol=2, frameon=False, loc="lower left")
+    fig.tight_layout()
+    fig.savefig(output_dir / "capacity_sweep.png", dpi=220)
+    plt.close(fig)
 
 
 def plot_heatmap(rows: list[BenchmarkRow], output_dir: Path) -> None:
-    methods = ["nearest", "hebbian", "pseudoinverse", "modern_attention"]
+    methods = ["hebbian", "modern_attention", "pseudoinverse", "nearest"]
     pixel_modes = ["full", "variance"]
     matrix = np.zeros((len(methods), len(pixel_modes)))
     for i, method in enumerate(methods):
@@ -393,15 +415,20 @@ def plot_heatmap(rows: list[BenchmarkRow], output_dir: Path) -> None:
             matrix[i, j] = mean(
                 row.label_accuracy for row in rows if row.method == method and row.pixel_mode == pixel_mode
             )
-    fig, ax = plt.subplots(figsize=(5.8, 4.8))
-    im = ax.imshow(matrix, vmin=0, vmax=1, cmap="viridis")
-    ax.set_xticks(np.arange(len(pixel_modes)), pixel_modes)
-    ax.set_yticks(np.arange(len(methods)), methods)
+    fig, ax = plt.subplots(figsize=(7.2, 5.4))
+    im = ax.imshow(matrix, vmin=0, vmax=1, cmap="magma")
+    ax.set_xticks(np.arange(len(pixel_modes)), [pretty_pixel(mode) for mode in pixel_modes])
+    ax.set_yticks(np.arange(len(methods)), [pretty_method(method) for method in methods])
     for i in range(len(methods)):
         for j in range(len(pixel_modes)):
-            ax.text(j, i, f"{matrix[i, j]:.2f}", ha="center", va="center", color="white", fontweight="bold")
-    ax.set_title("Mean label retrieval accuracy")
-    fig.colorbar(im, ax=ax)
+            color = "white" if matrix[i, j] < 0.72 else "#111827"
+            ax.text(j, i, f"{matrix[i, j]:.2f}", ha="center", va="center", color=color, fontweight="bold", fontsize=13)
+    ax.set_title("Mean Digit Retrieval Accuracy", fontsize=15, pad=14)
+    ax.tick_params(length=0)
+    ax.spines[:].set_visible(False)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.outline.set_visible(False)
+    cbar.set_label("Accuracy", rotation=270, labelpad=15)
     fig.tight_layout()
     fig.savefig(output_dir / "accuracy_heatmap.png", dpi=220)
     plt.close(fig)
@@ -420,7 +447,7 @@ def plot_qualitative_gallery(
     patterns = full_patterns[:, var_pixels]
     memories = build_memories(patterns)
     cases = [(2, "bitflip", 0.20), (5, "saltpepper", 0.30), (8, "occlusion", 0.20)]
-    fig, axes = plt.subplots(len(cases), 5, figsize=(10, 6.2))
+    fig, axes = plt.subplots(len(cases), 5, figsize=(11.5, 6.8))
     for row, (digit, noise_type, severity) in enumerate(cases):
         idx = int(np.flatnonzero(stored_labels == digit)[0])
         clean = full_patterns[idx]
@@ -438,9 +465,9 @@ def plot_qualitative_gallery(
         ]
         for col, (title, pattern) in enumerate(panels):
             axes[row, col].imshow((pattern.reshape(28, 28) + 1) / 2, cmap="gray", vmin=0, vmax=1)
-            axes[row, col].set_title(title, fontsize=9)
+            axes[row, col].set_title(title, fontsize=9.5)
             axes[row, col].axis("off")
-    fig.suptitle("Qualitative recall with variance-filtered MNIST pixels", fontsize=13)
+    fig.suptitle("What Each Memory Recovers From the Same Corrupted Query", fontsize=15)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(output_dir / "qualitative_gallery.png", dpi=220)
     plt.close(fig)
@@ -450,6 +477,22 @@ def lift_to_full(pattern: np.ndarray, selected_pixels: np.ndarray) -> np.ndarray
     full = np.full(784, -1, dtype=np.int8)
     full[selected_pixels] = pattern
     return full
+
+
+def pretty_method(method: str) -> str:
+    return {
+        "nearest": "Nearest neighbor",
+        "hebbian": "Classical Hopfield",
+        "pseudoinverse": "Pseudoinverse memory",
+        "modern_attention": "Modern attention memory",
+    }.get(method, method)
+
+
+def pretty_pixel(pixel_mode: str) -> str:
+    return {
+        "full": "Full pixels",
+        "variance": "Variance-filtered",
+    }.get(pixel_mode, pixel_mode)
 
 
 def render_report(output_dir: Path, summary: list[dict[str, float | str]], rows: list[BenchmarkRow]) -> None:
